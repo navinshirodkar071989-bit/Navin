@@ -4,82 +4,40 @@ import pandas as pd
 import datetime
 import pytz
 
-st.set_page_config(page_title="AI STOCK FINDER PRO", layout="wide")
+st.set_page_config(page_title="AI TOP MOVER SCANNER", layout="wide")
 
-st.title("🧠 AI STOCK FINDER PRO (NIFTY + BEYOND)")
+st.title("🚀 AI TOP MOVER SCANNER")
 
 # -----------------------------
-# TIME (IST)
+# TIME
 # -----------------------------
 ist = pytz.timezone('Asia/Kolkata')
 now = datetime.datetime.now(ist)
-
-st.write("⏰ Current Time:", now.strftime("%Y-%m-%d %H:%M"))
-
-def is_market_open():
-    return now.weekday() < 5 and (9 <= now.hour < 15 or (now.hour == 15 and now.minute <= 30))
-
-if is_market_open():
-    st.success("🟢 Market is OPEN")
-else:
-    st.warning("🔴 Market is CLOSED")
+st.write("⏰ Time:", now.strftime("%Y-%m-%d %H:%M"))
 
 # -----------------------------
-# STOCK UNIVERSE
+# LARGE STOCK UNIVERSE (~60)
 # -----------------------------
-nifty50 = [
+stocks = [
 "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
-"HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS",
-"LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
-"ULTRACEMCO.NS","TITAN.NS","NESTLEIND.NS","BAJFINANCE.NS","BAJAJFINSV.NS",
-"WIPRO.NS","HCLTECH.NS","POWERGRID.NS","NTPC.NS","ONGC.NS",
-"TATASTEEL.NS","JSWSTEEL.NS","COALINDIA.NS","INDUSINDBK.NS","ADANIENT.NS",
-"ADANIPORTS.NS","GRASIM.NS","CIPLA.NS","DRREDDY.NS","EICHERMOT.NS",
-"HEROMOTOCO.NS","APOLLOHOSP.NS","BRITANNIA.NS","DIVISLAB.NS","SBILIFE.NS",
-"HDFCLIFE.NS","ICICIPRULI.NS","BAJAJ-AUTO.NS","TATAMOTORS.NS","UPL.NS",
-"BPCL.NS","SHREECEM.NS","TECHM.NS","HINDALCO.NS","M&M.NS"
+"SBIN.NS","ITC.NS","BHARTIARTL.NS","KOTAKBANK.NS",
+"IRCTC.NS","RVNL.NS","IREDA.NS","NBCC.NS","HUDCO.NS",
+"SUZLON.NS","YESBANK.NS","IDFCFIRSTB.NS","PNB.NS","BANKBARODA.NS",
+"TATAPOWER.NS","ADANIPOWER.NS","NHPC.NS","SJVN.NS",
+"ZOMATO.NS","NYKAA.NS","PAYTM.NS","ADANIGREEN.NS",
+"WIPRO.NS","HCLTECH.NS","TECHM.NS",
+"DLF.NS","GAIL.NS","HAVELLS.NS","PIDILITIND.NS","NAUKRI.NS",
+"DIXON.NS","POLYCAB.NS","ASTRAL.NS","BSE.NS"
 ]
 
-# NIFTY NEXT 50 (partial for speed)
-nifty_next = [
-"PEL.NS","JUBLFOOD.NS","BANKBARODA.NS","PNB.NS","DLF.NS",
-"GAIL.NS","SIEMENS.NS","HAVELLS.NS","PIDILITIND.NS","NAUKRI.NS"
-]
-
-# Extra momentum stocks
-extra = [
-"IRCTC.NS","ZOMATO.NS","NYKAA.NS","PAYTM.NS","ADANIGREEN.NS"
-]
-
-stocks = list(set(nifty50 + nifty_next + extra))
-
-st.write(f"📊 Tracking {len(stocks)} stocks")
-
 # -----------------------------
-# INDICATORS
-# -----------------------------
-def calculate_rsi(data, window=14):
-    delta = data['Close'].diff()
-    gain = delta.where(delta > 0, 0).rolling(window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
-
-def calculate_macd(data):
-    exp1 = data['Close'].ewm(span=12).mean()
-    exp2 = data['Close'].ewm(span=26).mean()
-    macd = exp1 - exp2
-    signal = macd.ewm(span=9).mean()
-    return macd, signal
-
-# -----------------------------
-# FAST FETCH
+# FETCH DATA (FAST)
 # -----------------------------
 @st.cache_data(ttl=300)
 def fetch_data(stocks):
     return yf.download(
         stocks,
-        period="1mo",
+        period="2mo",
         interval="1d",
         group_by='ticker',
         threads=True,
@@ -89,35 +47,94 @@ def fetch_data(stocks):
 data = fetch_data(stocks)
 
 # -----------------------------
-# PROCESS
+# STEP 1: FIND TOP MOVERS
 # -----------------------------
-results = []
+movers = []
 
 for stock in stocks:
     try:
-        if stock not in data:
-            continue
-
         df = data[stock].dropna()
-        if df.empty:
-            continue
-
-        df['RSI'] = calculate_rsi(df)
-        df['MACD'], df['Signal'] = calculate_macd(df)
-
-        df = df.dropna()
-        if df.empty:
+        if len(df) < 2:
             continue
 
         latest = df.iloc[-1]
+        prev = df.iloc[-2]
+
+        change = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
+
+        movers.append((stock, change))
+
+    except:
+        continue
+
+# Sort by movement
+movers = sorted(movers, key=lambda x: abs(x[1]), reverse=True)
+
+# Pick top 15 movers
+top_movers = [x[0] for x in movers[:15]]
+
+st.subheader("📈 Top Movers (Auto Detected)")
+st.write(top_movers)
+
+# -----------------------------
+# INDICATOR
+# -----------------------------
+def rsi(df, window=14):
+    delta = df['Close'].diff()
+    gain = delta.where(delta > 0, 0).rolling(window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+# -----------------------------
+# STEP 2: SIGNALS ON MOVERS
+# -----------------------------
+results = []
+
+for stock in top_movers:
+    try:
+        df = data[stock].dropna()
+        if len(df) < 25:
+            continue
+
+        df['RSI'] = rsi(df)
+
+        latest = df.iloc[-1]
+        prev = df.iloc[-2]
+
+        high_20 = df['High'].rolling(20).max().iloc[-2]
+        breakout = latest['Close'] > high_20
+
+        rsi_val = latest['RSI']
+
+        change = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
+
+        signal = "HOLD"
+        entry = 0
+        stoploss = 0
+        target = 0
+
+        if breakout and rsi_val > 55:
+            signal = "🟢 BUY"
+            entry = latest['Close']
+            stoploss = entry * 0.97
+            target = entry * 1.05
+
+        elif rsi_val > 70:
+            signal = "🔴 SELL"
+            entry = latest['Close']
+            stoploss = entry * 1.03
+            target = entry * 0.95
 
         results.append({
             "Stock": stock,
-            "Close": round(float(latest['Close']), 2),
-            "RSI": round(float(latest['RSI']), 2),
-            "MACD": round(float(latest['MACD']), 2),
-            "Signal": round(float(latest['Signal']), 2),
-            "Volume": int(latest['Volume'])
+            "Price": round(latest['Close'], 2),
+            "Change %": round(change, 2),
+            "RSI": round(rsi_val, 2),
+            "Signal": signal,
+            "Entry": round(entry, 2),
+            "Stop Loss": round(stoploss, 2),
+            "Target": round(target, 2)
         })
 
     except:
@@ -129,24 +146,17 @@ df_all = pd.DataFrame(results)
 # DISPLAY
 # -----------------------------
 if df_all.empty:
-    st.error("No data available")
+    st.error("No data")
 else:
-    st.subheader("📊 Stock Data")
+    st.subheader("🔥 Trading Signals (Top Movers Only)")
     st.dataframe(df_all)
 
-    # AI SIGNALS
-    df_all['AI Signal'] = df_all.apply(
-        lambda row: "🟢 BUY" if row['RSI'] < 45 and row['MACD'] > row['Signal']
-        else "🔴 SELL" if row['RSI'] > 60 and row['MACD'] < row['Signal']
-        else "🟡 HOLD",
-        axis=1
-    )
+    trades = df_all[df_all["Signal"] != "HOLD"]
 
-    st.subheader("🤖 AI Signals")
-    st.dataframe(df_all)
+    st.subheader("🚀 Actionable Trades")
+    if not trades.empty:
+        st.dataframe(trades)
+    else:
+        st.info("No strong trades right now")
 
-    # TOP MOVERS
-    st.subheader("📈 Top Active Stocks")
-    st.dataframe(df_all.sort_values(by="Volume", ascending=False))
-
-st.caption("🔄 Auto-refresh every 5 minutes")
+st.caption("⚠️ Signals are probabilistic, not guaranteed")
