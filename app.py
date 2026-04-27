@@ -1,85 +1,128 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from streamlit_autorefresh import st_autorefresh
+import datetime
 
-st.set_page_config(page_title="NIFTY AI STOCK FINDER", layout="wide")
+st.set_page_config(page_title="NIFTY 50 AI STOCK FINDER", layout="wide")
 
-st.title("🤖 NIFTY 50 AI STOCK FINDER")
+st.title("🧠 NIFTY 50 AI STOCK FINDER")
 
-# 🔄 Auto refresh every 5 minutes
-st_autorefresh(interval=300000, key="refresh")
-st.write("⏱ Auto-refreshing every 5 minutes")
+# -----------------------------
+# Market Status
+# -----------------------------
+def is_market_open():
+    now = datetime.datetime.now()
+    return now.weekday() < 5 and (9 <= now.hour < 15 or (now.hour == 15 and now.minute <= 30))
 
-# ✅ STATIC NIFTY LIST (No lxml issue)
-def load_nifty():
-    return [
-        "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
-        "KOTAKBANK.NS","LT.NS","SBIN.NS","AXISBANK.NS","ITC.NS",
-        "HINDUNILVR.NS","BAJFINANCE.NS","ASIANPAINT.NS","MARUTI.NS",
-        "SUNPHARMA.NS","TITAN.NS","ULTRACEMCO.NS","WIPRO.NS",
-        "NESTLEIND.NS","POWERGRID.NS","ADANIENT.NS","ADANIPORTS.NS",
-        "BHARTIARTL.NS","HCLTECH.NS","TECHM.NS","TATAMOTORS.NS",
-        "TATASTEEL.NS","JSWSTEEL.NS","GRASIM.NS","HEROMOTOCO.NS",
-        "INDUSINDBK.NS","DRREDDY.NS","CIPLA.NS","EICHERMOT.NS",
-        "APOLLOHOSP.NS","DIVISLAB.NS","BRITANNIA.NS","COALINDIA.NS",
-        "ONGC.NS","BPCL.NS","SHREECEM.NS","BAJAJFINSV.NS",
-        "HDFCLIFE.NS","SBILIFE.NS","ICICIPRULI.NS","UPL.NS",
-        "NTPC.NS","TATACONSUM.NS","HINDALCO.NS"
-    ]
+now = datetime.datetime.now()
+st.write("⏰ Current Time:", now.strftime("%Y-%m-%d %H:%M"))
 
-stocks = load_nifty()
+if is_market_open():
+    st.success("🟢 Market is OPEN")
+else:
+    st.warning("🔴 Market is CLOSED (Using last available data)")
 
-st.subheader("🔥 AI Top Picks (Live)")
+# -----------------------------
+# NIFTY 50 Stocks List
+# -----------------------------
+nifty50 = [
+    "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
+    "HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS"
+]
 
+# -----------------------------
+# Indicator Functions
+# -----------------------------
+def calculate_rsi(data, window=14):
+    delta = data['Close'].diff()
+    gain = delta.where(delta > 0, 0).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+def calculate_macd(data):
+    exp1 = data['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = data['Close'].ewm(span=26, adjust=False).mean()
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9, adjust=False).mean()
+    return macd, signal
+
+# -----------------------------
+# Fetch Data
+# -----------------------------
 results = []
 
-# 🔍 Scan stocks
-for stock in stocks[:25]:  # limit for speed
+for stock in nifty50:
     try:
-        df = yf.download(stock, period="1y", progress=False)
+        df = yf.download(stock, period="1mo", interval="1d", progress=False)
 
-        if len(df) < 200:
-            continue
-
-        # Moving averages
-        df['MA50'] = df['Close'].rolling(50).mean()
-        df['MA200'] = df['Close'].rolling(200).mean()
-
-        # RSI
-        delta = df['Close'].diff()
-        gain = delta.clip(lower=0).rolling(14).mean()
-        loss = -delta.clip(upper=0).rolling(14).mean()
-        rs = gain / loss
-        df['RSI'] = 100 - (100 / (1 + rs))
-
-        df = df.dropna()
         if df.empty:
             continue
 
+        df['RSI'] = calculate_rsi(df)
+        df['MACD'], df['Signal'] = calculate_macd(df)
+
         latest = df.iloc[-1]
 
-        signal = "HOLD"
+        results.append({
+            "Stock": stock,
+            "Close": round(latest['Close'], 2),
+            "RSI": round(latest['RSI'], 2),
+            "MACD": round(latest['MACD'], 2),
+            "Signal": round(latest['Signal'], 2),
+            "Volume": int(latest['Volume'])
+        })
 
-        # 📊 Signal logic
-        if latest['MA50'] > latest['MA200'] and latest['RSI'] < 60:
-            signal = "BUY"
-        elif latest['MA50'] < latest['MA200'] and latest['RSI'] > 40:
-            signal = "SELL"
+    except Exception as e:
+        st.error(f"Error fetching {stock}: {e}")
 
-        results.append((stock, signal))
+df_all = pd.DataFrame(results)
 
-    except:
-        continue
+# -----------------------------
+# Show last data timestamp
+# -----------------------------
+if not df.empty:
+    st.write("📊 Last Data Date:", df.index[-1])
 
-# 📊 DISPLAY
-if len(results) == 0:
-    st.warning("No strong signals right now")
+# -----------------------------
+# Signal Logic
+# -----------------------------
+# Strong signals
+strong = df_all[
+    (df_all['RSI'] < 40) &
+    (df_all['MACD'] > df_all['Signal'])
+]
+
+# Relaxed signals
+relaxed = df_all[
+    (df_all['RSI'] < 55) &
+    (df_all['MACD'] > df_all['Signal'])
+]
+
+st.subheader("🔥 AI Top Picks (Strong Signals)")
+if not strong.empty:
+    st.dataframe(strong)
 else:
-    for stock, signal in results[:10]:
-        if signal == "BUY":
-            st.success(f"{stock} → 🟢 BUY")
-        elif signal == "SELL":
-            st.error(f"{stock} → 🔴 SELL")
-        else:
-            st.write(f"{stock} → HOLD")
+    st.info("No strong signals")
+
+st.subheader("⚡ Moderate Opportunities")
+if not relaxed.empty:
+    st.dataframe(relaxed)
+else:
+    st.info("No moderate signals")
+
+# -----------------------------
+# Fallback (Always show something)
+# -----------------------------
+st.subheader("📊 Top Active Stocks (Fallback)")
+
+if not df_all.empty:
+    fallback = df_all.sort_values(by="Volume", ascending=False).head(5)
+    st.dataframe(fallback)
+else:
+    st.error("No data available")
+
+# -----------------------------
+# Auto Refresh
+# -----------------------------
+st.caption("🔄 Auto-refresh every 5 minutes")
