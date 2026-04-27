@@ -6,29 +6,25 @@ st.title("📊 Smart Stock App")
 
 stock = st.selectbox("Select Stock", ["RELIANCE.NS","TCS.NS","INFY.NS"])
 
-df = yf.download(stock, period="1y")
+df = yf.download(stock, period="6mo")
 
-# Check if data exists
-if df.empty:
-    st.error("No data found")
+# Fix column issue
+if isinstance(df.columns, pd.MultiIndex):
+    df.columns = df.columns.get_level_values(0)
+
+# Moving averages
+df['MA50'] = df['Close'].rolling(50).mean()
+df['MA200'] = df['Close'].rolling(200).mean()
+
+# Avoid empty data error
+if len(df) < 200:
+    st.warning("Not enough data for analysis")
 else:
-    # Moving averages
-    df['MA50'] = df['Close'].rolling(50).mean()
-    df['MA200'] = df['Close'].rolling(200).mean()
+    latest = df.iloc[-1]
 
-    # Drop NaN
-    df = df.dropna()
-
-    # Check again after cleaning
-    if len(df) == 0:
-        st.warning("Not enough data for analysis")
+    if latest['MA50'] > latest['MA200']:
+        st.success("🟢 BUY Signal")
     else:
-        ma50 = df['MA50'].iloc[-1]
-        ma200 = df['MA200'].iloc[-1]
+        st.error("🔴 SELL Signal")
 
-        if ma50 > ma200:
-            st.success("🟢 BUY Signal")
-        else:
-            st.error("🔴 SELL Signal")
-
-        st.line_chart(df[['Close','MA50','MA200']])
+    st.line_chart(df[['Close','MA50','MA200']])
