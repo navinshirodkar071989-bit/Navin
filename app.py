@@ -9,7 +9,7 @@ st.set_page_config(page_title="NIFTY 50 AI STOCK FINDER", layout="wide")
 st.title("🧠 NIFTY 50 AI STOCK FINDER")
 
 # -----------------------------
-# TIME (IST FIX)
+# TIME (IST)
 # -----------------------------
 ist = pytz.timezone('Asia/Kolkata')
 now = datetime.datetime.now(ist)
@@ -25,9 +25,21 @@ else:
     st.warning("🔴 Market is CLOSED")
 
 # -----------------------------
-# STOCK LIST
+# AUTO FETCH NIFTY 50
 # -----------------------------
-stocks = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS"]
+@st.cache_data(ttl=86400)
+def get_nifty50():
+    url = "https://en.wikipedia.org/wiki/NIFTY_50"
+    table = pd.read_html(url)[0]
+    symbols = table['Symbol'].tolist()
+    
+    # Convert to Yahoo format
+    symbols = [s + ".NS" for s in symbols]
+    return symbols
+
+stocks = get_nifty50()
+
+st.write(f"📊 Tracking {len(stocks)} stocks")
 
 # -----------------------------
 # INDICATORS
@@ -47,25 +59,38 @@ def calculate_macd(data):
     return macd, signal
 
 # -----------------------------
-# FETCH DATA
+# FAST DATA FETCH (KEY OPTIMIZATION)
+# -----------------------------
+@st.cache_data(ttl=300)
+def fetch_data(stocks):
+    data = yf.download(
+        stocks,
+        period="1mo",
+        interval="1d",
+        group_by='ticker',
+        threads=True,
+        progress=False
+    )
+    return data
+
+data = fetch_data(stocks)
+
+# -----------------------------
+# PROCESS DATA
 # -----------------------------
 results = []
 
 for stock in stocks:
     try:
-        df = yf.download(stock, period="1mo", interval="1d", progress=False)
+        df = data[stock].dropna()
 
         if df.empty:
             continue
-
-        # Fix multi-index issue
-        df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
 
         df['RSI'] = calculate_rsi(df)
         df['MACD'], df['Signal'] = calculate_macd(df)
 
         df = df.dropna()
-
         if df.empty:
             continue
 
@@ -80,25 +105,24 @@ for stock in stocks:
             "Volume": int(latest['Volume'])
         })
 
-    except Exception as e:
-        st.error(f"Error fetching {stock}: {e}")
+    except:
+        continue
 
 df_all = pd.DataFrame(results)
 
 # -----------------------------
-# DISPLAY DATA
+# DISPLAY
 # -----------------------------
 if df_all.empty:
-    st.error("❌ No data available")
+    st.error("No data available")
 else:
     st.subheader("📊 Stock Data")
     st.dataframe(df_all)
 
 # -----------------------------
-# IMPROVED SIGNAL LOGIC
+# AI SIGNALS
 # -----------------------------
 if not df_all.empty:
-
     df_all['AI Signal'] = df_all.apply(
         lambda row: "🟢 BUY" if row['RSI'] < 45 and row['MACD'] > row['Signal']
         else "🔴 SELL" if row['RSI'] > 60 and row['MACD'] < row['Signal']
@@ -110,7 +134,7 @@ if not df_all.empty:
     st.dataframe(df_all)
 
 # -----------------------------
-# ALWAYS SHOW TOP STOCKS
+# TOP ACTIVE
 # -----------------------------
 if not df_all.empty:
     st.subheader("📈 Top Active Stocks")
