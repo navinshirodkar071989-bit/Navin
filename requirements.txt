@@ -2,4 +2,3 @@ streamlit
 yfinance
 pandas
 streamlit-autorefresh
-scikit-learn
