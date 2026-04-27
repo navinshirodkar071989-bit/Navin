@@ -6,7 +6,7 @@ st.title("📊 Smart Stock App")
 
 stock = st.selectbox("Select Stock", ["RELIANCE.NS","TCS.NS","INFY.NS"])
 
-df = yf.download(stock, period="6mo")
+df = yf.download(stock, period="1y")
 
 # Check if data exists
 if df.empty:
