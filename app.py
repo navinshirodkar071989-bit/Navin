@@ -1,21 +1,23 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import datetime
+from datetime import datetime
+import pytz
 
 st.set_page_config(page_title="NIFTY 50 AI STOCK FINDER", layout="wide")
 
 st.title("🧠 NIFTY 50 AI STOCK FINDER")
 
 # -----------------------------
-# Market Status
+# TIME (IST FIX)
 # -----------------------------
-def is_market_open():
-    now = datetime.datetime.now()
-    return now.weekday() < 5 and (9 <= now.hour < 15 or (now.hour == 15 and now.minute <= 30))
+ist = pytz.timezone('Asia/Kolkata')
+now = datetime.now(ist)
 
-now = datetime.datetime.now()
 st.write("⏰ Current Time:", now.strftime("%Y-%m-%d %H:%M"))
+
+def is_market_open():
+    return now.weekday() < 5 and (9 <= now.hour < 15 or (now.hour == 15 and now.minute <= 30))
 
 if is_market_open():
     st.success("🟢 Market is OPEN")
@@ -25,9 +27,7 @@ else:
 # -----------------------------
 # STOCK LIST
 # -----------------------------
-nifty50 = [
-    "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS"
-]
+stocks = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS"]
 
 # -----------------------------
 # INDICATORS
@@ -51,30 +51,41 @@ def calculate_macd(data):
 # -----------------------------
 results = []
 
-for stock in nifty50:
+for stock in stocks:
     try:
         df = yf.download(stock, period="1mo", interval="1d", progress=False)
 
         if df.empty:
             continue
 
+        # ✅ FIX: Flatten columns (important for yfinance bug)
+        df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+
+        # Indicators
         df['RSI'] = calculate_rsi(df)
         df['MACD'], df['Signal'] = calculate_macd(df)
 
-        df = df.dropna()   # IMPORTANT: remove NaN rows
+        df = df.dropna()
 
         if df.empty:
             continue
 
         latest = df.iloc[-1]
 
+        # ✅ FIX: Force scalar values
+        close = float(latest['Close'])
+        rsi = float(latest['RSI'])
+        macd = float(latest['MACD'])
+        signal = float(latest['Signal'])
+        volume = int(latest['Volume'])
+
         results.append({
             "Stock": stock,
-            "Close": round(float(latest['Close']), 2),
-            "RSI": round(float(latest['RSI']), 2),
-            "MACD": round(float(latest['MACD']), 2),
-            "Signal": round(float(latest['Signal']), 2),
-            "Volume": int(latest['Volume'])   # ✅ FIXED BUG HERE
+            "Close": round(close, 2),
+            "RSI": round(rsi, 2),
+            "MACD": round(macd, 2),
+            "Signal": round(signal, 2),
+            "Volume": volume
         })
 
     except Exception as e:
@@ -88,14 +99,12 @@ df_all = pd.DataFrame(results)
 if df_all.empty:
     st.error("❌ No data available")
 else:
-    st.subheader("📊 All Stocks Data")
+    st.subheader("📊 Stock Data")
     st.dataframe(df_all)
 
-# -----------------------------
-# SIGNAL LOGIC
-# -----------------------------
-if not df_all.empty:
-
+    # -----------------------------
+    # SIGNAL LOGIC
+    # -----------------------------
     strong = df_all[
         (df_all['RSI'] < 40) &
         (df_all['MACD'] > df_all['Signal'])
