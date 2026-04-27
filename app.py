@@ -25,19 +25,20 @@ else:
     st.warning("🔴 Market is CLOSED")
 
 # -----------------------------
-# AUTO FETCH NIFTY 50
+# NIFTY 50 (STATIC - NO ERROR)
 # -----------------------------
-@st.cache_data(ttl=86400)
-def get_nifty50():
-    url = "https://en.wikipedia.org/wiki/NIFTY_50"
-    table = pd.read_html(url)[0]
-    symbols = table['Symbol'].tolist()
-    
-    # Convert to Yahoo format
-    symbols = [s + ".NS" for s in symbols]
-    return symbols
-
-stocks = get_nifty50()
+stocks = [
+"RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
+"HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS",
+"LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
+"ULTRACEMCO.NS","TITAN.NS","NESTLEIND.NS","BAJFINANCE.NS","BAJAJFINSV.NS",
+"WIPRO.NS","HCLTECH.NS","POWERGRID.NS","NTPC.NS","ONGC.NS",
+"TATASTEEL.NS","JSWSTEEL.NS","COALINDIA.NS","INDUSINDBK.NS","ADANIENT.NS",
+"ADANIPORTS.NS","GRASIM.NS","CIPLA.NS","DRREDDY.NS","EICHERMOT.NS",
+"HEROMOTOCO.NS","APOLLOHOSP.NS","BRITANNIA.NS","DIVISLAB.NS","SBILIFE.NS",
+"HDFCLIFE.NS","ICICIPRULI.NS","BAJAJ-AUTO.NS","TATAMOTORS.NS","UPL.NS",
+"BPCL.NS","SHREECEM.NS","TECHM.NS","HINDALCO.NS","M&M.NS"
+]
 
 st.write(f"📊 Tracking {len(stocks)} stocks")
 
@@ -59,11 +60,11 @@ def calculate_macd(data):
     return macd, signal
 
 # -----------------------------
-# FAST DATA FETCH (KEY OPTIMIZATION)
+# FAST FETCH
 # -----------------------------
 @st.cache_data(ttl=300)
 def fetch_data(stocks):
-    data = yf.download(
+    return yf.download(
         stocks,
         period="1mo",
         interval="1d",
@@ -71,19 +72,20 @@ def fetch_data(stocks):
         threads=True,
         progress=False
     )
-    return data
 
 data = fetch_data(stocks)
 
 # -----------------------------
-# PROCESS DATA
+# PROCESS
 # -----------------------------
 results = []
 
 for stock in stocks:
     try:
-        df = data[stock].dropna()
+        if stock not in data:
+            continue
 
+        df = data[stock].dropna()
         if df.empty:
             continue
 
@@ -119,10 +121,6 @@ else:
     st.subheader("📊 Stock Data")
     st.dataframe(df_all)
 
-# -----------------------------
-# AI SIGNALS
-# -----------------------------
-if not df_all.empty:
     df_all['AI Signal'] = df_all.apply(
         lambda row: "🟢 BUY" if row['RSI'] < 45 and row['MACD'] > row['Signal']
         else "🔴 SELL" if row['RSI'] > 60 and row['MACD'] < row['Signal']
@@ -133,12 +131,5 @@ if not df_all.empty:
     st.subheader("🤖 AI Signals")
     st.dataframe(df_all)
 
-# -----------------------------
-# TOP ACTIVE
-# -----------------------------
-if not df_all.empty:
     st.subheader("📈 Top Active Stocks")
-    top = df_all.sort_values(by="Volume", ascending=False)
-    st.dataframe(top)
-
-st.caption("🔄 Auto-refresh every 5 minutes")
+    st.dataframe(df_all.sort_values(by="Volume", ascending=False))
