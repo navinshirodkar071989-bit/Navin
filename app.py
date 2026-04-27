@@ -1,97 +1,74 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestClassifier
-import requests
 
-st.set_page_config(page_title="Elite Stock App", layout="wide")
+st.set_page_config(layout="wide")
+st.title("📊 NIFTY AI Stock Scanner")
 
-st.title("📊 Elite AI Stock Dashboard")
+# NIFTY stocks (expand anytime)
+stocks = [
+    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS",
+    "ICICIBANK.NS","SBIN.NS","ITC.NS","LT.NS"
+]
 
-# Sidebar
-stock = st.sidebar.selectbox("Select Stock", [
-    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"
-])
+results = []
 
-period = st.sidebar.selectbox("Select Period", ["6mo","1y","2y"])
+for stock in stocks:
+    df = yf.download(stock, period="1y", progress=False)
 
-# Telegram settings (optional)
-st.sidebar.subheader("🔔 Alerts")
-TOKEN = st.sidebar.text_input("Bot Token")
-CHAT_ID = st.sidebar.text_input("Chat ID")
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
-# Download data
-df = yf.download(stock, period=period)
+    if len(df) < 200:
+        continue
 
-# Fix columns
-if isinstance(df.columns, pd.MultiIndex):
-    df.columns = df.columns.get_level_values(0)
-
-if df.empty:
-    st.error("No data found")
-
-else:
     # Indicators
     df['MA50'] = df['Close'].rolling(50).mean()
     df['MA200'] = df['Close'].rolling(200).mean()
-    df['RSI'] = (100 - (100 / (1 + df['Close'].pct_change().rolling(14).mean()))))
 
     df = df.dropna()
 
-    latest = df.iloc[-1]
-
-    # AI model
+    # Target (next day up/down)
     df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
     df = df.dropna()
 
-    features = df[['MA50','MA200']]
-    target = df['Target']
+    # Features
+    X = df[['MA50','MA200']]
+    y = df['Target']
 
+    # Auto-learning model
     model = RandomForestClassifier(n_estimators=100)
-    model.fit(features, target)
+    model.fit(X, y)
 
-    pred = model.predict([features.iloc[-1]])[0]
+    pred = model.predict([X.iloc[-1]])[0]
 
-    # Layout
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("💰 Price", round(latest['Close'],2))
-
-    change = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0])*100
-    col2.metric("📊 Change %", round(change,2))
-
-    # Signal
-    if latest['MA50'] > latest['MA200']:
-        signal = "BUY"
-        col3.success("🟢 BUY")
-    else:
-        signal = "SELL"
-        col3.error("🔴 SELL")
-
-    # AI Prediction
-    st.subheader("🤖 AI Prediction")
+    # Score system
+    score = 0
     if pred == 1:
-        st.success("Next Day: UP 📈")
-    else:
-        st.error("Next Day: DOWN 📉")
+        score += 2
+    if df['MA50'].iloc[-1] > df['MA200'].iloc[-1]:
+        score += 2
 
-    # Send alert
-    if TOKEN and CHAT_ID:
-        msg = f"{stock} Signal: {signal}"
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        requests.get(url, params={"chat_id": CHAT_ID, "text": msg})
+    results.append((stock, score))
 
-    # Candlestick chart
-    fig = go.Figure(data=[go.Candlestick(
-        x=df.index,
-        open=df['Open'],
-        high=df['High'],
-        low=df['Low'],
-        close=df['Close']
-    )])
+# Top picks
+top = sorted(results, key=lambda x: x[1], reverse=True)[:5]
 
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA50'], name='MA50'))
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA200'], name='MA200'))
+st.subheader("🔥 Top 5 Stocks Today")
 
-    st.plotly_chart(fig, use_container_width=True)
+for stock, score in top:
+    st.write(f"{stock} → Score: {score}")
+
+# Chart section
+selected = st.selectbox("View Stock Chart", [x[0] for x in top])
+
+df = yf.download(selected, period="1y")
+
+if isinstance(df.columns, pd.MultiIndex):
+    df.columns = df.columns.get_level_values(0)
+
+df['MA50'] = df['Close'].rolling(50).mean()
+df['MA200'] = df['Close'].rolling(200).mean()
+
+st.line_chart(df[['Close','MA50','MA200']])
