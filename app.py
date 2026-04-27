@@ -4,9 +4,9 @@ import pandas as pd
 import datetime
 import pytz
 
-st.set_page_config(page_title="AI TOP MOVER SCANNER", layout="wide")
+st.set_page_config(page_title="AI ELITE SCANNER", layout="wide")
 
-st.title("🚀 AI TOP MOVER SCANNER")
+st.title("🚀 AI ELITE SCANNER (NIFTY100 + Smart Picks)")
 
 # -----------------------------
 # TIME
@@ -16,24 +16,43 @@ now = datetime.datetime.now(ist)
 st.write("⏰ Time:", now.strftime("%Y-%m-%d %H:%M"))
 
 # -----------------------------
-# LARGE STOCK UNIVERSE (~60)
+# NIFTY 100 (CORE LIST)
 # -----------------------------
-stocks = [
+nifty100 = [
 "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
-"SBIN.NS","ITC.NS","BHARTIARTL.NS","KOTAKBANK.NS",
-"IRCTC.NS","RVNL.NS","IREDA.NS","NBCC.NS","HUDCO.NS",
-"SUZLON.NS","YESBANK.NS","IDFCFIRSTB.NS","PNB.NS","BANKBARODA.NS",
-"TATAPOWER.NS","ADANIPOWER.NS","NHPC.NS","SJVN.NS",
-"ZOMATO.NS","NYKAA.NS","PAYTM.NS","ADANIGREEN.NS",
-"WIPRO.NS","HCLTECH.NS","TECHM.NS",
-"DLF.NS","GAIL.NS","HAVELLS.NS","PIDILITIND.NS","NAUKRI.NS",
-"DIXON.NS","POLYCAB.NS","ASTRAL.NS","BSE.NS"
+"HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS",
+"LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
+"TITAN.NS","ULTRACEMCO.NS","NESTLEIND.NS","BAJFINANCE.NS","BAJAJFINSV.NS",
+"WIPRO.NS","HCLTECH.NS","POWERGRID.NS","NTPC.NS","ONGC.NS",
+"TATASTEEL.NS","JSWSTEEL.NS","COALINDIA.NS","INDUSINDBK.NS",
+"ADANIPORTS.NS","GRASIM.NS","CIPLA.NS","DRREDDY.NS","EICHERMOT.NS",
+"HEROMOTOCO.NS","APOLLOHOSP.NS","BRITANNIA.NS","DIVISLAB.NS",
+"SBILIFE.NS","HDFCLIFE.NS","ICICIPRULI.NS","TATAMOTORS.NS",
+"UPL.NS","BPCL.NS","SHREECEM.NS","TECHM.NS","HINDALCO.NS","M&M.NS"
 ]
 
 # -----------------------------
-# FETCH DATA (FAST)
+# SECTOR BOOST (IMPORTANT)
 # -----------------------------
-@st.cache_data(ttl=300)
+extra = [
+# Defence
+"HAL.NS","BEL.NS","BDL.NS","MAZDOCK.NS","COCHINSHIP.NS",
+
+# Renewable
+"ADANIGREEN.NS","TATAPOWER.NS","NHPC.NS","SJVN.NS","SUZLON.NS",
+
+# Momentum
+"IRCTC.NS","RVNL.NS","IREDA.NS","NBCC.NS"
+]
+
+stocks = list(set(nifty100 + extra))
+
+st.write(f"📊 Tracking {len(stocks)} stocks")
+
+# -----------------------------
+# FETCH DATA
+# -----------------------------
+@st.cache_data(ttl=180)
 def fetch_data(stocks):
     return yf.download(
         stocks,
@@ -47,37 +66,7 @@ def fetch_data(stocks):
 data = fetch_data(stocks)
 
 # -----------------------------
-# STEP 1: FIND TOP MOVERS
-# -----------------------------
-movers = []
-
-for stock in stocks:
-    try:
-        df = data[stock].dropna()
-        if len(df) < 2:
-            continue
-
-        latest = df.iloc[-1]
-        prev = df.iloc[-2]
-
-        change = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
-
-        movers.append((stock, change))
-
-    except:
-        continue
-
-# Sort by movement
-movers = sorted(movers, key=lambda x: abs(x[1]), reverse=True)
-
-# Pick top 15 movers
-top_movers = [x[0] for x in movers[:15]]
-
-st.subheader("📈 Top Movers (Auto Detected)")
-st.write(top_movers)
-
-# -----------------------------
-# INDICATOR
+# RSI
 # -----------------------------
 def rsi(df, window=14):
     delta = df['Close'].diff()
@@ -87,11 +76,11 @@ def rsi(df, window=14):
     return 100 - (100 / (1 + rs))
 
 # -----------------------------
-# STEP 2: SIGNALS ON MOVERS
+# ANALYSIS
 # -----------------------------
 results = []
 
-for stock in top_movers:
+for stock in stocks:
     try:
         df = data[stock].dropna()
         if len(df) < 25:
@@ -103,38 +92,54 @@ for stock in top_movers:
         prev = df.iloc[-2]
 
         high_20 = df['High'].rolling(20).max().iloc[-2]
+        volume_avg = df['Volume'].rolling(20).mean().iloc[-2]
+
         breakout = latest['Close'] > high_20
-
+        volume_spike = latest['Volume'] > 1.5 * volume_avg
         rsi_val = latest['RSI']
-
         change = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
 
+        # -----------------------------
+        # CONFIDENCE SCORE
+        # -----------------------------
+        score = 0
+
+        if breakout: score += 30
+        if volume_spike: score += 25
+        if rsi_val > 55: score += 20
+        if change > 2: score += 15
+        if rsi_val < 70: score += 10
+
+        # -----------------------------
+        # SIGNAL
+        # -----------------------------
         signal = "HOLD"
         entry = 0
-        stoploss = 0
-        target = 0
+        sl = 0
+        tgt = 0
 
-        if breakout and rsi_val > 55:
-            signal = "🟢 BUY"
+        if score >= 70:
+            signal = "🟢 STRONG BUY"
             entry = latest['Close']
-            stoploss = entry * 0.97
-            target = entry * 1.05
+            sl = entry * 0.97
+            tgt = entry * 1.06
 
-        elif rsi_val > 70:
+        elif score >= 50:
+            signal = "🟡 BUY"
+
+        elif rsi_val > 75:
             signal = "🔴 SELL"
-            entry = latest['Close']
-            stoploss = entry * 1.03
-            target = entry * 0.95
 
         results.append({
             "Stock": stock,
             "Price": round(latest['Close'], 2),
             "Change %": round(change, 2),
             "RSI": round(rsi_val, 2),
+            "Confidence": score,
             "Signal": signal,
             "Entry": round(entry, 2),
-            "Stop Loss": round(stoploss, 2),
-            "Target": round(target, 2)
+            "Stop Loss": round(sl, 2),
+            "Target": round(tgt, 2)
         })
 
     except:
@@ -148,15 +153,15 @@ df_all = pd.DataFrame(results)
 if df_all.empty:
     st.error("No data")
 else:
-    st.subheader("🔥 Trading Signals (Top Movers Only)")
+    st.subheader("📊 Market Scan")
     st.dataframe(df_all)
 
-    trades = df_all[df_all["Signal"] != "HOLD"]
+    st.subheader("🔥 High Probability Trades")
+    high = df_all[df_all["Confidence"] >= 70]
 
-    st.subheader("🚀 Actionable Trades")
-    if not trades.empty:
-        st.dataframe(trades)
+    if not high.empty:
+        st.dataframe(high.sort_values(by="Confidence", ascending=False))
     else:
-        st.info("No strong trades right now")
+        st.info("No strong trades now")
 
-st.caption("⚠️ Signals are probabilistic, not guaranteed")
+st.caption("⚠️ Probability system, not guaranteed prediction")
