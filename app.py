@@ -7,18 +7,17 @@ df = yf.download(stock, period="6mo")
 # Moving averages
 df['MA50'] = df['Close'].rolling(50).mean()
 df['MA200'] = df['Close'].rolling(200).mean()
-# Drop NaN rows (IMPORTANT)
+# Remove NaN values
 df = df.dropna()
-# Take last row properly
-latest = df.iloc[-1]
-# Convert to float (FIX)
-ma50 = float(latest['MA50'])
-ma200 = float(latest['MA200'])
-# Signal
-if ma50 > ma200:
-    st.success("🟢 BUY Signal")
-else:
-    st.error("🔴 SELL Signal")
+# Check if data exists
+if not df.empty:
+    ma50 = df['MA50'].iloc[-1]
+    ma200 = df['MA200'].iloc[-1]
+    if ma50 > ma200:
+        st.success("🟢 BUY Signal")
+    else:
+        st.error("🔴 SELL Signal")
 
-# Chart
-st.line_chart(df[['Close','MA50','MA200']])
+    st.line_chart(df[['Close','MA50','MA200']])
+else:
+    st.warning("Not enough data")
