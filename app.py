@@ -4,9 +4,9 @@ import pandas as pd
 import datetime
 import pytz
 
-st.set_page_config(page_title="NIFTY 50 AI STOCK FINDER", layout="wide")
+st.set_page_config(page_title="AI STOCK FINDER PRO", layout="wide")
 
-st.title("🧠 NIFTY 50 AI STOCK FINDER")
+st.title("🧠 AI STOCK FINDER PRO (NIFTY + BEYOND)")
 
 # -----------------------------
 # TIME (IST)
@@ -25,9 +25,9 @@ else:
     st.warning("🔴 Market is CLOSED")
 
 # -----------------------------
-# NIFTY 50 (STATIC - NO ERROR)
+# STOCK UNIVERSE
 # -----------------------------
-stocks = [
+nifty50 = [
 "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
 "HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS",
 "LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
@@ -39,6 +39,19 @@ stocks = [
 "HDFCLIFE.NS","ICICIPRULI.NS","BAJAJ-AUTO.NS","TATAMOTORS.NS","UPL.NS",
 "BPCL.NS","SHREECEM.NS","TECHM.NS","HINDALCO.NS","M&M.NS"
 ]
+
+# NIFTY NEXT 50 (partial for speed)
+nifty_next = [
+"PEL.NS","JUBLFOOD.NS","BANKBARODA.NS","PNB.NS","DLF.NS",
+"GAIL.NS","SIEMENS.NS","HAVELLS.NS","PIDILITIND.NS","NAUKRI.NS"
+]
+
+# Extra momentum stocks
+extra = [
+"IRCTC.NS","ZOMATO.NS","NYKAA.NS","PAYTM.NS","ADANIGREEN.NS"
+]
+
+stocks = list(set(nifty50 + nifty_next + extra))
 
 st.write(f"📊 Tracking {len(stocks)} stocks")
 
@@ -121,6 +134,7 @@ else:
     st.subheader("📊 Stock Data")
     st.dataframe(df_all)
 
+    # AI SIGNALS
     df_all['AI Signal'] = df_all.apply(
         lambda row: "🟢 BUY" if row['RSI'] < 45 and row['MACD'] > row['Signal']
         else "🔴 SELL" if row['RSI'] > 60 and row['MACD'] < row['Signal']
@@ -131,5 +145,8 @@ else:
     st.subheader("🤖 AI Signals")
     st.dataframe(df_all)
 
+    # TOP MOVERS
     st.subheader("📈 Top Active Stocks")
     st.dataframe(df_all.sort_values(by="Volume", ascending=False))
+
+st.caption("🔄 Auto-refresh every 5 minutes")
