@@ -1,96 +1,83 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(layout="wide")
-st.title("🚀 Elite NIFTY AI Scanner")
+st.title("🚀 NIFTY Auto Stock Finder (Live)")
 
-# NIFTY stocks (you can expand)
-stocks = [
-    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS",
-    "ICICIBANK.NS","SBIN.NS","ITC.NS","LT.NS"
-]
+# 🔄 Auto refresh every 5 minutes
+st_autorefresh(interval=300000, key="refresh")
+
+st.write("⏱ Auto-refreshing every 5 minutes")
+
+# Load NIFTY 50
+@st.cache_data
+def load_nifty():
+    url = "https://en.wikipedia.org/wiki/NIFTY_50"
+    table = pd.read_html(url)
+    df = table[1]
+    df['Symbol'] = df['Symbol'] + ".NS"
+    return df['Symbol'].tolist()
+
+stocks = load_nifty()
+
+# Period
+period = "1y"
 
 results = []
 
+# Scan all stocks
 for stock in stocks:
-    df = yf.download(stock, period="1y", progress=False)
+    try:
+        df = yf.download(stock, period=period, progress=False)
 
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+        if len(df) < 200:
+            continue
 
-    if len(df) < 200:
+        # Indicators
+        df['MA50'] = df['Close'].rolling(50).mean()
+        df['MA200'] = df['Close'].rolling(200).mean()
+
+        delta = df['Close'].diff()
+        gain = delta.clip(lower=0).rolling(14).mean()
+        loss = -delta.clip(upper=0).rolling(14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+
+        df = df.dropna()
+        if df.empty:
+            continue
+
+        latest = df.iloc[-1]
+
+        signal = "HOLD"
+
+        # 📊 Signal logic
+        if latest['MA50'] > latest['MA200'] and latest['RSI'] < 60:
+            signal = "BUY"
+        elif latest['MA50'] < latest['MA200'] and latest['RSI'] > 40:
+            signal = "SELL"
+
+        score = 0
+        if signal == "BUY":
+            score = 2
+        elif signal == "SELL":
+            score = 1
+
+        results.append((stock, signal, score))
+
+    except:
         continue
 
-    # Indicators
-    df['MA50'] = df['Close'].rolling(50).mean()
-    df['MA200'] = df['Close'].rolling(200).mean()
+# Sort best stocks
+top = sorted(results, key=lambda x: x[2], reverse=True)[:10]
 
-    # RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs)
+st.subheader("🔥 Live Signals (Top Stocks)")
 
-    # MACD
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-
-    # Breakout
-    df['Breakout'] = df['Close'] > df['Close'].rolling(20).max().shift(1)
-
-    df = df.dropna()
-
-    # AI Target
-    df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
-    df = df.dropna()
-
-    X = df[['MA50','MA200','RSI','MACD']]
-    y = df['Target']
-
-    # AI Model (auto-learning)
-    model = RandomForestClassifier(n_estimators=100)
-    model.fit(X, y)
-
-    pred = model.predict([X.iloc[-1]])[0]
-
-    latest = df.iloc[-1]
-
-    # Scoring system
-    score = 0
-    if pred == 1:
-        score += 2
-    if latest['MA50'] > latest['MA200']:
-        score += 2
-    if latest['RSI'] < 60:
-        score += 1
-    if latest['MACD'] > 0:
-        score += 1
-    if latest['Breakout']:
-        score += 2
-
-    results.append((stock, score))
-
-# Sort top picks
-top = sorted(results, key=lambda x: x[1], reverse=True)[:5]
-
-st.subheader("🔥 Top 5 Stocks Today")
-
-for stock, score in top:
-    st.write(f"{stock} → Score: {score}")
-
-# Chart section
-selected = st.selectbox("📈 View Chart", [x[0] for x in top])
-
-df = yf.download(selected, period="1y")
-
-if isinstance(df.columns, pd.MultiIndex):
-    df.columns = df.columns.get_level_values(0)
-
-df['MA50'] = df['Close'].rolling(50).mean()
-df['MA200'] = df['Close'].rolling(200).mean()
-
-st.line_chart(df[['Close','MA50','MA200']])
+for s, sig, sc in top:
+    if sig == "BUY":
+        st.success(f"{s} → 🟢 BUY")
+    elif sig == "SELL":
+        st.error(f"{s} → 🔴 SELL")
+    else:
+        st.write(f"{s} → HOLD")
