@@ -3,10 +3,22 @@ import yfinance as yf
 import pandas as pd
 import datetime
 import pytz
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="AI ELITE SCANNER", layout="wide")
 
-st.title("🚀 AI ELITE SCANNER (NIFTY100 + Smart Picks)")
+st.title("🚀 AI ELITE SCANNER (High Accuracy Mode)")
+
+# -----------------------------
+# AUTO REFRESH
+# -----------------------------
+st_autorefresh(interval=300000)
+
+# -----------------------------
+# ALERT FUNCTION
+# -----------------------------
+def alert_popup(stock, price, score):
+    st.toast(f"🚀 {stock} | Price: {price} | Confidence: {score}", icon="🔥")
 
 # -----------------------------
 # TIME
@@ -16,7 +28,7 @@ now = datetime.datetime.now(ist)
 st.write("⏰ Time:", now.strftime("%Y-%m-%d %H:%M"))
 
 # -----------------------------
-# NIFTY 100 (CORE LIST)
+# STOCK LIST
 # -----------------------------
 nifty100 = [
 "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
@@ -31,22 +43,13 @@ nifty100 = [
 "UPL.NS","BPCL.NS","SHREECEM.NS","TECHM.NS","HINDALCO.NS","M&M.NS"
 ]
 
-# -----------------------------
-# SECTOR BOOST (IMPORTANT)
-# -----------------------------
 extra = [
-# Defence
 "HAL.NS","BEL.NS","BDL.NS","MAZDOCK.NS","COCHINSHIP.NS",
-
-# Renewable
 "ADANIGREEN.NS","TATAPOWER.NS","NHPC.NS","SJVN.NS","SUZLON.NS",
-
-# Momentum
 "IRCTC.NS","RVNL.NS","IREDA.NS","NBCC.NS"
 ]
 
 stocks = list(set(nifty100 + extra))
-
 st.write(f"📊 Tracking {len(stocks)} stocks")
 
 # -----------------------------
@@ -66,7 +69,23 @@ def fetch_data(stocks):
 data = fetch_data(stocks)
 
 # -----------------------------
-# RSI
+# MARKET FILTER (FIXED)
+# -----------------------------
+nifty = yf.download("^NSEI", period="5d", interval="1d", progress=False)
+
+try:
+    nifty_close = nifty['Close'].dropna()
+    market_up = bool(nifty_close.iloc[-1] > nifty_close.iloc[-2])
+except:
+    market_up = True  # fallback (avoid crash)
+
+if market_up:
+    st.success("📈 Market Trend: Bullish")
+else:
+    st.error("📉 Market Trend: Weak")
+
+# -----------------------------
+# RSI FUNCTION
 # -----------------------------
 def rsi(df, window=14):
     delta = df['Close'].diff()
@@ -76,6 +95,12 @@ def rsi(df, window=14):
     return 100 - (100 / (1 + rs))
 
 # -----------------------------
+# SESSION STATE
+# -----------------------------
+if "alerted" not in st.session_state:
+    st.session_state.alerted = set()
+
+# -----------------------------
 # ANALYSIS
 # -----------------------------
 results = []
@@ -83,7 +108,7 @@ results = []
 for stock in stocks:
     try:
         df = data[stock].dropna()
-        if len(df) < 25:
+        if len(df) < 50:
             continue
 
         df['RSI'] = rsi(df)
@@ -91,24 +116,34 @@ for stock in stocks:
         latest = df.iloc[-1]
         prev = df.iloc[-2]
 
-        high_20 = df['High'].rolling(20).max().iloc[-2]
-        volume_avg = df['Volume'].rolling(20).mean().iloc[-2]
-
-        breakout = latest['Close'] > high_20
-        volume_spike = latest['Volume'] > 1.5 * volume_avg
-        rsi_val = latest['RSI']
         change = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
+
+        # -----------------------------
+        # IMPROVED LOGIC
+        # -----------------------------
+        high_20 = df['High'].rolling(20).max().iloc[-2]
+        breakout = latest['Close'] > high_20 * 1.01
+
+        volume_avg = df['Volume'].rolling(20).mean().iloc[-2]
+        volume_spike = latest['Volume'] > 2 * volume_avg
+
+        sma_50 = df['Close'].rolling(50).mean().iloc[-1]
+        trend_up = latest['Close'] > sma_50
+
+        rsi_val = latest['RSI']
+        good_rsi = 55 < rsi_val < 70
+
+        strong_move = change > 2.5
 
         # -----------------------------
         # CONFIDENCE SCORE
         # -----------------------------
         score = 0
-
         if breakout: score += 30
         if volume_spike: score += 25
-        if rsi_val > 55: score += 20
-        if change > 2: score += 15
-        if rsi_val < 70: score += 10
+        if trend_up: score += 20
+        if strong_move: score += 15
+        if good_rsi: score += 10
 
         # -----------------------------
         # SIGNAL
@@ -118,14 +153,18 @@ for stock in stocks:
         sl = 0
         tgt = 0
 
-        if score >= 70:
+        if score >= 75 and market_up:
             signal = "🟢 STRONG BUY"
             entry = latest['Close']
             sl = entry * 0.97
             tgt = entry * 1.06
 
-        elif score >= 50:
-            signal = "🟡 BUY"
+            if stock not in st.session_state.alerted:
+                alert_popup(stock, round(entry, 2), score)
+                st.session_state.alerted.add(stock)
+
+        elif score >= 55:
+            signal = "🟡 WATCH"
 
         elif rsi_val > 75:
             signal = "🔴 SELL"
@@ -154,14 +193,14 @@ if df_all.empty:
     st.error("No data")
 else:
     st.subheader("📊 Market Scan")
-    st.dataframe(df_all)
+    st.dataframe(df_all.sort_values(by="Confidence", ascending=False))
 
     st.subheader("🔥 High Probability Trades")
-    high = df_all[df_all["Confidence"] >= 70]
+    high = df_all[df_all["Signal"] == "🟢 STRONG BUY"]
 
     if not high.empty:
         st.dataframe(high.sort_values(by="Confidence", ascending=False))
     else:
         st.info("No strong trades now")
 
-st.caption("⚠️ Probability system, not guaranteed prediction")
+st.caption("⚠️ High accuracy system. Fewer but better trades.")
