@@ -4,14 +4,21 @@ import pandas as pd
 st.title("📊 Smart Stock App")
 stock = st.selectbox("Select Stock", ["RELIANCE.NS","TCS.NS","INFY.NS"])
 df = yf.download(stock, period="6mo")
-# Moving Averages
+# Moving averages
 df['MA50'] = df['Close'].rolling(50).mean()
 df['MA200'] = df['Close'].rolling(200).mean()
-# Signal Logic
+# Drop NaN rows (IMPORTANT)
+df = df.dropna()
+# Take last row properly
 latest = df.iloc[-1]
-if latest['MA50'] > latest['MA200']:
+# Convert to float (FIX)
+ma50 = float(latest['MA50'])
+ma200 = float(latest['MA200'])
+# Signal
+if ma50 > ma200:
     st.success("🟢 BUY Signal")
 else:
     st.error("🔴 SELL Signal")
-# Show Chart
+
+# Chart
 st.line_chart(df[['Close','MA50','MA200']])
