@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
+import datetime
 import pytz
 
 st.set_page_config(page_title="NIFTY 50 AI STOCK FINDER", layout="wide")
@@ -12,7 +12,7 @@ st.title("🧠 NIFTY 50 AI STOCK FINDER")
 # TIME (IST FIX)
 # -----------------------------
 ist = pytz.timezone('Asia/Kolkata')
-now = datetime.now(ist)
+now = datetime.datetime.now(ist)
 
 st.write("⏰ Current Time:", now.strftime("%Y-%m-%d %H:%M"))
 
@@ -58,10 +58,9 @@ for stock in stocks:
         if df.empty:
             continue
 
-        # ✅ FIX: Flatten columns (important for yfinance bug)
+        # Fix multi-index issue
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
 
-        # Indicators
         df['RSI'] = calculate_rsi(df)
         df['MACD'], df['Signal'] = calculate_macd(df)
 
@@ -72,20 +71,13 @@ for stock in stocks:
 
         latest = df.iloc[-1]
 
-        # ✅ FIX: Force scalar values
-        close = float(latest['Close'])
-        rsi = float(latest['RSI'])
-        macd = float(latest['MACD'])
-        signal = float(latest['Signal'])
-        volume = int(latest['Volume'])
-
         results.append({
             "Stock": stock,
-            "Close": round(close, 2),
-            "RSI": round(rsi, 2),
-            "MACD": round(macd, 2),
-            "Signal": round(signal, 2),
-            "Volume": volume
+            "Close": round(float(latest['Close']), 2),
+            "RSI": round(float(latest['RSI']), 2),
+            "MACD": round(float(latest['MACD']), 2),
+            "Signal": round(float(latest['Signal']), 2),
+            "Volume": int(latest['Volume'])
         })
 
     except Exception as e:
@@ -102,36 +94,27 @@ else:
     st.subheader("📊 Stock Data")
     st.dataframe(df_all)
 
-    # -----------------------------
-    # SIGNAL LOGIC
-    # -----------------------------
-    strong = df_all[
-        (df_all['RSI'] < 40) &
-        (df_all['MACD'] > df_all['Signal'])
-    ]
+# -----------------------------
+# IMPROVED SIGNAL LOGIC
+# -----------------------------
+if not df_all.empty:
 
-    relaxed = df_all[
-        (df_all['RSI'] < 55) &
-        (df_all['MACD'] > df_all['Signal'])
-    ]
+    df_all['AI Signal'] = df_all.apply(
+        lambda row: "🟢 BUY" if row['RSI'] < 45 and row['MACD'] > row['Signal']
+        else "🔴 SELL" if row['RSI'] > 60 and row['MACD'] < row['Signal']
+        else "🟡 HOLD",
+        axis=1
+    )
 
-    st.subheader("🔥 Strong Signals")
-    if not strong.empty:
-        st.dataframe(strong)
-    else:
-        st.info("No strong signals")
+    st.subheader("🤖 AI Signals")
+    st.dataframe(df_all)
 
-    st.subheader("⚡ Moderate Signals")
-    if not relaxed.empty:
-        st.dataframe(relaxed)
-    else:
-        st.info("No moderate signals")
-
-    # -----------------------------
-    # FALLBACK
-    # -----------------------------
-    st.subheader("📊 Top Active Stocks")
-    fallback = df_all.sort_values(by="Volume", ascending=False).head(5)
-    st.dataframe(fallback)
+# -----------------------------
+# ALWAYS SHOW TOP STOCKS
+# -----------------------------
+if not df_all.empty:
+    st.subheader("📈 Top Active Stocks")
+    top = df_all.sort_values(by="Volume", ascending=False)
+    st.dataframe(top)
 
 st.caption("🔄 Auto-refresh every 5 minutes")
