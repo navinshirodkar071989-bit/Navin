@@ -3,30 +3,34 @@ import yfinance as yf
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
-st.title("🚀 NIFTY Auto Stock Finder (Live)")
+st.set_page_config(layout="wide")
+st.title("🚀 NIFTY 50 AUTO STOCK FINDER")
 
 # 🔄 Auto refresh every 5 minutes
 st_autorefresh(interval=300000, key="refresh")
+st.write("⏱ Auto-refresh every 5 minutes")
 
-st.write("⏱ Auto-refreshing every 5 minutes")
-
-# Load NIFTY 50
-@st.cache_data
+# ✅ Fixed NIFTY 50 list (no error)
 def load_nifty():
-    url = "https://en.wikipedia.org/wiki/NIFTY_50"
-    table = pd.read_html(url)
-    df = table[1]
-    df['Symbol'] = df['Symbol'] + ".NS"
-    return df['Symbol'].tolist()
+    return [
+        "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
+        "HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS",
+        "LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
+        "TITAN.NS","ULTRACEMCO.NS","BAJFINANCE.NS","BAJAJFINSV.NS","HCLTECH.NS",
+        "WIPRO.NS","TECHM.NS","NESTLEIND.NS","POWERGRID.NS","NTPC.NS",
+        "ONGC.NS","JSWSTEEL.NS","TATASTEEL.NS","INDUSINDBK.NS","ADANIENT.NS",
+        "ADANIPORTS.NS","GRASIM.NS","DRREDDY.NS","CIPLA.NS","COALINDIA.NS",
+        "BRITANNIA.NS","EICHERMOT.NS","HEROMOTOCO.NS","SHREECEM.NS","BPCL.NS",
+        "DIVISLAB.NS","APOLLOHOSP.NS","HDFCLIFE.NS","SBILIFE.NS","ICICIPRULI.NS",
+        "BAJAJ-AUTO.NS","TATACONSUM.NS","UPL.NS","M&M.NS","TATAMOTORS.NS"
+    ]
 
 stocks = load_nifty()
 
-# Period
 period = "1y"
-
 results = []
 
-# Scan all stocks
+# 🔍 Scan all stocks
 for stock in stocks:
     try:
         df = yf.download(stock, period=period, progress=False)
@@ -69,10 +73,10 @@ for stock in stocks:
     except:
         continue
 
-# Sort best stocks
+# 🔥 Top stocks
 top = sorted(results, key=lambda x: x[2], reverse=True)[:10]
 
-st.subheader("🔥 Live Signals (Top Stocks)")
+st.subheader("🔥 Top NIFTY 50 Signals")
 
 for s, sig, sc in top:
     if sig == "BUY":
